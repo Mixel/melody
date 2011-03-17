@@ -8221,6 +8221,14 @@ sub _hdlr_blog_entry_count {
 Returns the number of published comments associated with the blog
 currently in context.
 
+B<Attributes:>
+
+=over 4
+
+=item * top - Causes the tag to only count the comments which have no parent comment.
+
+=back
+
 =for tags multiblog, count, blogs, comments
 
 =cut
@@ -8231,6 +8239,7 @@ sub _hdlr_blog_comment_count {
     $ctx->set_blog_load_context( $args, \%terms, \%args )
       or return $ctx->error( $ctx->errstr );
     $terms{visible} = 1;
+    $terms{parent_id} = \' IS NULL' if $args->{top};
     require MT::Comment;
     my $count = MT::Comment->count( \%terms, \%args );
     return $ctx->count_format( $count, $args );
@@ -11021,12 +11030,20 @@ sub _hdlr_comment_fields {
 
 Outputs the number of published comments for the current entry in context.
 
+B<Attributes:>
+
+=over 4
+
+=item * top - Causes the tag to only count the comments which have no parent comment.
+
+=back
+
 =cut
 
 sub _hdlr_entry_comments {
     my ( $ctx, $args, $cond ) = @_;
     my $e = $ctx->stash('entry') or return $ctx->_no_entry_error();
-    my $count = $e->comment_count;
+    my $count = $args->{top} ? MT->model('comment')->count({ entry_id => $e->id, parent_id => \' IS NULL'}) : $e->comment_count;
     return $ctx->count_format( $count, $args );
 }
 
@@ -11508,6 +11525,12 @@ If 'namespace' is also specified, filters the comments based on
 the count within that namespace. This specifies the maximum count
 to consider the comment for inclusion.
 
+=item * top
+
+If top is specified, the only comments that will be loaded
+are ones that are top-level parent comments. In a nested commenting
+scheme, they would be the top comments in each nested branch.
+
 =back
 
 =for tags multiblog, comments, loop, scoring
@@ -11651,6 +11674,7 @@ sub _hdlr_comments {
     # if there are no comments in the stash
     else {
         $terms{visible} = 1;
+        $terms{parent_id} = \' IS NULL' if $args->{top};
         $ctx->set_blog_load_context( $args, \%terms, \%args )
           or return $ctx->error( $ctx->errstr );
 
@@ -15221,6 +15245,14 @@ B<Example:>
         <li><$mt:CategoryLabel$> (<$mt:CategoryCommentCount$>)</li>
     </mt:Categories></ul>
 
+B<Attributes:>
+
+=over 4
+
+=item * top - Causes the tag to only count the comments which have no parent comment.
+
+=back
+
 =for tags categories, comments
 
 =cut
@@ -15241,7 +15273,9 @@ sub _hdlr_category_comment_count {
       = MT->model( $ctx->stash('tag') =~ m/Category/ig ? 'entry' : 'page' );
     my $join_str = '= comment_entry_id';
     my @args = (
-                 { blog_id => $blog_id, visible => 1 },
+                 { blog_id => $blog_id, visible => 1,
+                     $args->{top} ? ( parent_id => \' IS NULL' ) : ()
+                 },
                  {
                     'join' =>
                       MT::Entry->join_on(
